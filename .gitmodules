@@ -1,0 +1,3 @@
+[submodule "tee/tinyalloc"]
+	path = tee/tinyalloc
+	url = https://github.com/thi-ng/tinyalloc.git
