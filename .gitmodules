@@ -1,0 +1,3 @@
+[submodule "filtering_enclave/tinyalloc"]
+	path = filtering_enclave/tinyalloc
+	url = https://github.com/thi-ng/tinyalloc.git
