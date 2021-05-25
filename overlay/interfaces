@@ -1,0 +1,8 @@
+auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet6 static
+  address fd00:abcd::2
+  netmask 64
+  gateway fd00:abcd::1
