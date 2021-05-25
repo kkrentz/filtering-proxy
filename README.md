@@ -1,59 +1,198 @@
-# keystone-demo
-Demo host and enclave applications exercising most functionality.
+This repository contains the two central components of our TEE-assisted remote denial-of-sleep defense, namely the Filtering host app and TEE. Other components are scattered across these repositories:
 
-This demo includes a small enclave server that is capable of remote
-attestation, secure channel creation, and performing a simple
-word-counting computation securely.
+* https://github.com/kkrentz/contiki-ng
+* https://github.com/kkrentz/libcoap
+* https://github.com/kkrentz/filtering-keystone
+* https://github.com/kkrentz/micro-ecc
+* https://github.com/kkrentz/libcoap-minimal
 
-Please see documentation in the docs/ directory.
+We also use tinyalloc (&copy; 2016 - 2017 Karsten Schmidt - Apache Software License 2.0).
 
-./quick-start.sh will clone/build all necessary components for the
-demo to run in qemu if you have already built keystone and it's sdk
-tests successfully.
+Please find our paper [here](https://doi.org/10.1007/978-3-031-30122-3_24).
 
-The demo will generally work on the master branch of Keystone, but
-will ALWAYS work on the dev branch. We suggest building the dev branch
-of Keystone if you have any issues with the demo on master.
+# Getting Started
 
-# Quick Start
+## Installing Dependencies
 
-The demo requires the expected hash of the security monitor.
-The hash will be used by the trusted client to verify that the server enclave
-is created and initialized by the known version of the SM.
-
-If you want to skip this verification, you can pass in `--ignore-valid` flag
-to the client.
-
-Please see the security monitor's documentation to see how to generate a hash.
-
-Once you generated the `sm_expected_hash.h`, try:
-
+```bash
+sudo apt install autoconf \
+  automake \
+  build-essential \
+  curl \
+  doxygen \
+  git \
+  libtool \
+  makeself \
+  net-tools \
+  openjdk-21-jdk \
+  pip \
+  pkg-config \
+  rlwrap \
+  srecord \
+  wireshark
 ```
-SM_HASH=<path/to/sm_expected_hash.h> ./quick-start.sh
+Download and extract [GCC](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads).
+
+Download and extract [Gradle](https://gradle.org/releases/), too.
+
+## Cloning Repositories
+
+Switch to a directory where you like to store the repositories in.
+
+```bash
+git clone https://github.com/kkrentz/contiki-ng.git
+pushd contiki-ng
+git submodule update --init --recursive
+popd
+git clone https://github.com/kkrentz/filtering-keystone.git
+pushd filtering-keystone
+git submodule update --init --recursive
+popd
+git clone https://github.com/kkrentz/filtering-proxy.git
+pushd filtering-proxy
+git submodule update --init --recursive
+popd
+git clone https://github.com/kkrentz/libcoap-minimal.git
 ```
 
-You should be able to see the server enclave package `demo-server.ke` and the
-trusted client `trusted_client.riscv` under `build` directory.
+## Setting up Environment Variables
 
-Copy these files into the machine, and run the server enclave.
-Then, connect to the server using the client.
+Add this to `~/.bashrc`:
 
+```bash
+export CNG_PATH=<path to contiki-ng>
+export KEYSTONE_PATH=<path to filtering-keystone>
+export FILTERING_PROXY_PATH=<path to filtering-proxy>
+export LIBCOAP_PATH=$HOME/libcoap
+export LD_LIBRARY_PATH=$LIBCOAP_PATH/lib
+export PKG_CONFIG_PATH=$LIBCOAP_PATH/lib/pkgconfig
+PATH=<path to gradle>/bin:$PATH
+PATH=<path to GCC>/bin:$PATH
 ```
-# on the server side
-./demo-server.ke
+
+`CNG_PATH` and `KEYSTONE_PATH` are only used within the bash snippets of this README.
+
+## Building Keystone
+
+For an introduction to Keystone's build system, see [here](https://docs.google.com/document/d/1yyUPx0PWyk3NjuQ4uYNBLyASri5MvxqsotZce_cPfwU/edit).
+
+```bash
+cd $KEYSTONE_PATH && make
 ```
 
+For inspecting build errors, run `less build-generic64/build.log`. It sometimes already helps to clean a package. This cleans the most relevant packages:
+
+```bash
+make BUILDROOT_TARGET=filtering-libcoap-dirclean \
+  && make BUILDROOT_TARGET=filtering-proxy-dirclean \
+  && make BUILDROOT_TARGET=keystone-bootrom-dirclean \
+  && make BUILDROOT_TARGET=keystone-sm-dirclean \
+  && make BUILDROOT_TARGET=host-keystone-sdk-dirclean \
+  && make BUILDROOT_TARGET=keystone-driver-dirclean \
+  && make BUILDROOT_TARGET=keystone-examples-dirclean \
+  && make BUILDROOT_TARGET=opensbi-dirclean
 ```
-# on the client side
-./trusted_client.riscv
+
+One can switch between different remote attestation protocols like so:
+
+```bash
+# SIGn-then-MAc (SIGMA)-based remote attestation
+make KEYSTONE_ATTESTATION=sigma
+# Tiny Remote Attestation Protocol (TRAP)
+make KEYSTONE_ATTESTATION=trap
+# Implicit Remote Attestation Protocol (IRAP)
+make KEYSTONE_ATTESTATION=irap
+```
+IRAP is the default.
+
+## Building libcoap
+
+```bash
+cd $CNG_PATH/os/net/app-layer/libcoap/ \
+  && ./autogen.sh \
+  && ./configure \
+    --prefix=$LIBCOAP_PATH \
+    --disable-documentation \
+    --disable-dtls \
+    --with-epoll \
+    --disable-examples \
+    --disable-examples-source \
+    --disable-tcp \
+    --disable-oscore \
+    --enable-oscore-ng \
+    --disable-q-block \
+  && make -j$(nproc) \
+  && make install
 ```
 
-The client will connect to the enclave and perform the remote attestation.
-If the attestation is successful, the client can send an arbitrary message to the server
-so that the server counts the number of words in the message and reply.
+## Running the Middlebox in QEMU
 
-## Attestation Failures
+```bash
+cd $KEYSTONE_PATH \
+  && pushd build-generic64 \
+  && rm -rf overlay/root/.ssh \
+  && mkdir -p overlay/etc/network \
+  && cp $FILTERING_PROXY_PATH/overlay/interfaces overlay/etc/network/ \
+  && popd \
+  && make \
+  && sudo ip tuntap add dev tap0 mode tap user $USER \
+  && make run
+```
 
-It is expected that the client will reject the attestation report from
-the host if you haven't regenerated the expected hashes for the SM and
-eapp. Pass the `--ignore-valid` flag to the client for testing.
+Log in as `root` with password `sifive`.
+
+Once logged in, run:
+
+```bash
+./run.sh
+```
+
+Note: You can stop QEMU using CTRL+A,X
+
+To establish a network connection with QEMU:
+
+```bash
+cd $FILTERING_PROXY_PATH && ./connect.sh
+```
+
+## Running Filtering Clients in Cooja
+
+Copy the output of `./run.sh` to `$CNG_PATH/os/services/filtering/filtering-client.c`.
+
+Start Cooja:
+
+```bash
+cd $CNG_PATH/tools/cooja \
+  && gradle run --args='../../examples/filtering/basic.csc'
+```
+
+Open a terminal and run:
+
+```bash
+cd $CNG_PATH/examples/filtering/aggregator/ \
+  && make TARGET=openmote BOARD=openmote-cc2538 BOARD_REVISION=REV_A1 savetarget \
+  && make connect-router-cooja
+```
+
+To check if networking works, ping the border router and the IoT device like so:
+
+```bash
+ping6 fd00::ff:fe00:1
+ping6 fd00::ff:fe00:2
+```
+
+For switching remote attestation protocols, go to `$CNG_PATH/examples/filtering/*/project-conf.h`, and adapt `WITH_TRAP` and `WITH_IRAP` accordingly. For running IRAP with mutual attestation, go to `$CNG_PATH/examples/filtering/*/Makefile` and uncomment `MODULES += os/services/tiny-dice`. This will enable the mock-up of TinyDICE.
+
+## Running an OSCORE-NG Client
+
+```bash
+cd <path to libcoap-minimal>
+make -j${nproc}
+./client
+```
+
+## Running Filtering Clients on OpenMotes
+
+* As for flashing OpenMotes, see [here](https://gist.github.com/kkrentz/18ce317d0a1db331ccc38be6c7e0ac9e).
+
+Note: `client.cc` and `smor-l3.c` contain hardcoded addresses. These need to be adapted to the real hardware.

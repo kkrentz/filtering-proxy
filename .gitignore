@@ -3,3 +3,4 @@
 *.riscv
 *.eapp_riscv
 *~
+/build/

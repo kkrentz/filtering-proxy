@@ -1,84 +1,168 @@
-cmake_minimum_required(VERSION 3.10)
-enable_language(C CXX ASM)
+cmake_minimum_required(VERSION 3.20)
+project(filtering-proxy C CXX ASM)
 
-# check if SDK has been built and KEYSTONE_SDK_DIR environment variable exists
-if (NOT DEFINED ENV{KEYSTONE_SDK_DIR})
-  message(FATAL_ERROR "Please set KEYSTONE_SDK_DIR environment variable to an installed SDK path")
+option(WITH_HEAP "Enable dynamic memory allocation" ON)
+option(WITH_TRAP "Enable the Tiny Remote Attestation Protocol (TRAP)" ON)
+
+# check if SDK has been built and KEYSTONE_SDK_DIR configuration variable exists
+if (NOT DEFINED KEYSTONE_SDK_DIR)
+  message(FATAL_ERROR "Please set KEYSTONE_SDK_DIR configuration variable to an installed SDK path")
 endif()
-set(KEYSTONE_SDK_DIR $ENV{KEYSTONE_SDK_DIR})
 
-if (NOT DEFINED ENV{LIBSODIUM_CLIENT_DIR})
-  message(FATAL_ERROR "Please set LIBSODIUM_CLIENT_DIR")
+if (NOT DEFINED LIBCOAP_INSTALL_PATH)
+  message(FATAL_ERROR "Please set LIBCOAP_INSTALL_PATH")
 endif()
-set(LIBSODIUM_CLIENT_DIR $ENV{LIBSODIUM_CLIENT_DIR})
 
-if (NOT DEFINED ENV{LIBSODIUM_DIR})
-  message(FATAL_ERROR "Please set LIBSODIUM_DIR")
-endif()
-set(LIBSODIUM_DIR $ENV{LIBSODIUM_DIR})
-
-include($ENV{KEYSTONE_SDK_DIR}/cmake/macros.cmake)
-
-if(RISCV32)
-  message(STATUS "riscv32")
-  set(BITS 32)
+if(WITH_TRAP)
+  add_compile_definitions(WITH_TRAP=1)
 else()
-  message(STATUS "riscv64")
-  set(BITS 64)
+  add_compile_definitions(WITH_TRAP=0)
 endif()
 
-use_riscv_toolchain(${BITS})
+if(WITH_HEAP)
+  add_compile_definitions(WITH_HEAP=1)
+else()
+  add_compile_definitions(WITH_HEAP=0)
+endif()
 
-# export include directory
-include_directories(include
-  ${LIBSODIUM_CLIENT_DIR}/include
-  ${KEYSTONE_SDK_DIR}/include
-  ${KEYSTONE_SDK_DIR}/include/host
-  ${KEYSTONE_SDK_DIR}/include/edge
-  ${KEYSTONE_SDK_DIR}/include/verifier)
+include(${KEYSTONE_SDK_DIR}/cmake/macros.cmake)
+include(ExternalProject)
+find_package(Git REQUIRED)
+
+use_riscv_toolchain($ENV{KEYSTONE_BITS})
 
 # set paths to the libraries
-set(KEYSTONE_LIB_HOST ${KEYSTONE_SDK_DIR}/lib/libkeystone-host.a)
-set(KEYSTONE_LIB_EDGE ${KEYSTONE_SDK_DIR}/lib/libkeystone-edge.a)
-set(KEYSTONE_LIB_VERIFIER ${KEYSTONE_SDK_DIR}/lib/libkeystone-verifier.a)
-set(KEYSTONE_LIB_EAPP ${KEYSTONE_SDK_DIR}/lib/libkeystone-eapp.a)
+cmake_path(SET KEYSTONE_LIB_HOST "${KEYSTONE_SDK_DIR}/lib/libkeystone-host.a")
+cmake_path(SET KEYSTONE_LIB_EDGE "${KEYSTONE_SDK_DIR}/lib/libkeystone-edge.a")
+cmake_path(SET LIBCOAP "${LIBCOAP_INSTALL_PATH}/lib/libcoap-3.a")
 
-# find program "makeself"
-find_program(MAKESELF makeself)
+# create a phony target "filtering-proxy"
+add_custom_target("filtering-proxy")
 
-# trusted client
-add_executable(trusted_client.riscv
-  trusted_client/client.cpp
-  trusted_client/trusted_client.cpp
-  include/enclave_expected_hash.h
-  include/sm_expected_hash.h
-)
+set(common_src
+  $ENV{KEYSTONE_SM}/src/libcoap/src/oscore-ng/oscore_ng_aes_128.c
+  $ENV{KEYSTONE_SM}/src/libcoap/src/oscore-ng/oscore_ng_cbor.c
+  $ENV{KEYSTONE_SM}/src/libcoap/src/oscore-ng/oscore_ng_ccm_star.c
+  $ENV{KEYSTONE_SM}/src/libcoap/src/oscore-ng/oscore_ng_cose.c
+  $ENV{KEYSTONE_SM}/src/libcoap/src/oscore-ng/oscore_ng_list.c
+  $ENV{KEYSTONE_SM}/src/libcoap/src/oscore-ng/oscore_ng_sha_256.c
+  $ENV{KEYSTONE_SM}/src/libcoap/src/oscore-ng/oscore_ng.c)
+include_directories(common
+  ${KEYSTONE_SDK_DIR}/include
+  $ENV{KEYSTONE_SM}/src/libcoap/include)
 
-target_link_libraries(trusted_client.riscv
-  ${KEYSTONE_LIB_VERIFIER}
-  ${LIBSODIUM_CLIENT_DIR}/.libs/libsodium.a)
+set(eapp_bin filtering-eapp)
+set(host_bin filtering-host-app)
+set(package_name "filtering-proxy.ke")
+set(package_script "./filtering-host-app filtering-eapp eyrie-rt loader.bin")
 
-# enclave
-add_subdirectory(server_eapp)
-set(host_bin demo-server.riscv)
-set(host_src enclave-host.cpp edge_wrapper.cpp)
-set(eyrie_plugins "freemem")
-set(package_name "demo-server.ke")
-set(package_script "./demo-server.riscv")
+if(RISCV32)
+  set(eyrie_plugins "freemem rv32")
+else()
+  set(eyrie_plugins "freemem")
+endif()
 
-add_executable(${host_bin} ${host_src})
-target_link_libraries(${host_bin} ${KEYSTONE_LIB_HOST} ${KEYSTONE_LIB_EDGE} ${KEYSTONE_LIB_VERIFIER})
+# eapp
 
-set(eyrie_files_to_copy eyrie-rt)
+add_executable(${eapp_bin}
+  ${common_src}
+  tee/attestation_service.c
+  tee/clock.c
+  tee/coap.c
+  tee/iot_client.c
+  tee/iot_message.c
+  tee/leaky-bucket.c
+  tee/log.c
+  tee/main.c
+  tee/memory.c
+  tee/ocall_dispatcher.c
+  tee/oscore_ng_filter.c
+  tee/registration.c
+  tee/report.c
+  $ENV{KEYSTONE_SDK}/src/app/encret.s
+  $ENV{KEYSTONE_SDK}/src/app/string.c
+  $ENV{KEYSTONE_SDK}/src/app/syscall.c)
+if(NOT WITH_TRAP)
+  target_sources(${eapp_bin}
+    PRIVATE $ENV{KEYSTONE_SM}/src/libcoap/ext/micro-ecc/uECC.c
+    PRIVATE $ENV{KEYSTONE_SM}/src/libcoap/src/oscore-ng/oscore_ng_bakery.c)
+endif()
+if(WITH_HEAP)
+  target_sources(${eapp_bin} PRIVATE tee/tinyalloc/tinyalloc.c)
+else()
+  target_sources(${eapp_bin} PRIVATE tee/memb.c)
+endif()
+
+target_compile_definitions(${eapp_bin}
+  PRIVATE LOG_LEVEL=1
+  PRIVATE KEYSTONE_ENCLAVE=1)
+target_link_libraries(${eapp_bin}
+  -nostdlib
+  -static
+  "-T ${CMAKE_CURRENT_SOURCE_DIR}/tee/app.lds"
+  ${KEYSTONE_LIB_EDGE})
+target_include_directories(${eapp_bin}
+  PUBLIC ${KEYSTONE_SDK_DIR}/include/app
+  PUBLIC ${KEYSTONE_SDK_DIR}/include/edge)
+target_compile_options(${eapp_bin} PRIVATE -Werror -Wall -Wextra -ffreestanding)
+if(WITH_HEAP)
+target_include_directories(${eapp_bin} PUBLIC tee/tinyalloc)
+endif()
+if(NOT WITH_TRAP)
+  target_compile_definitions(${eapp_bin}
+    PRIVATE uECC_CURVE=uECC_secp256r1
+    PRIVATE uECC_SUPPORTS_secp160r1=0
+    PRIVATE uECC_SUPPORTS_secp192r1=0
+    PRIVATE uECC_SUPPORTS_secp224r1=0
+    PRIVATE uECC_SUPPORTS_secp256r1=1
+    PRIVATE uECC_SUPPORTS_secp256k1=0
+    PRIVATE uECC_ENABLE_VLI_API=1)
+  target_include_directories(${eapp_bin}
+    PUBLIC $ENV{KEYSTONE_SM}/src/libcoap/ext/micro-ecc)
+endif()
+
+# host
+
+add_executable(${host_bin}
+  ${common_src}
+  host_app/CoapServer.cpp
+  host_app/EnclaveLogger.cpp
+  host_app/main.cpp
+  host_app/IotRequest.cpp
+  host_app/Request.cpp
+  host_app/Ocall.cpp
+  host_app/OcallDispatcher.cpp
+  host_app/OcallFactory.cpp
+  host_app/PduFactory.cpp
+  host_app/ProxiedRequest.cpp
+  host_app/Referenceable.cpp
+  host_app/RegistrantRequest.cpp
+  host_app/Registration.cpp)
+
+target_link_libraries(${host_bin}
+  ${LIBCOAP} ${KEYSTONE_LIB_HOST} ${KEYSTONE_LIB_EDGE})
+set_target_properties(${host_bin}
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+target_include_directories(${host_bin}
+  PUBLIC ${KEYSTONE_SDK_DIR}/include
+  PUBLIC ${LIBCOAP_INSTALL_PATH}/include)
+target_compile_options(${host_bin} PRIVATE -Werror -Wall -Wextra)
+
+# add target for Eyrie runtime (see keystone.cmake)
+
+set(eyrie_files_to_copy .options_log eyrie-rt loader.bin)
 add_eyrie_runtime(${eapp_bin}-eyrie
-  "v1.0.0"
   ${eyrie_plugins}
   ${eyrie_files_to_copy})
 
-add_keystone_package(packagedemo
+# add target for packaging (see keystone.cmake)
+
+add_keystone_package(${eapp_bin}-package
   ${package_name}
   ${package_script}
-  ${eyrie_files_to_copy} server_eapp/server_eapp.eapp_riscv ${host_bin})
+  ${eyrie_files_to_copy} ${eapp_bin} ${host_bin})
 
-add_dependencies(packagedemo ${eapp_bin}-eyrie)
+add_dependencies(${eapp_bin}-package ${eapp_bin}-eyrie)
 
+# add package to the top-level target
+add_dependencies(filtering-proxy ${eapp_bin}-package)
