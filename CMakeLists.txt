@@ -7,15 +7,12 @@ if (NOT DEFINED ENV{KEYSTONE_SDK_DIR})
 endif()
 set(KEYSTONE_SDK_DIR $ENV{KEYSTONE_SDK_DIR})
 
-if (NOT DEFINED ENV{LIBSODIUM_CLIENT_DIR})
-  message(FATAL_ERROR "Please set LIBSODIUM_CLIENT_DIR")
-endif()
-set(LIBSODIUM_CLIENT_DIR $ENV{LIBSODIUM_CLIENT_DIR})
+set(LIBCOAP_RISCV_DIR $ENV{LIBCOAP_RISCV_DIR})
 
-if (NOT DEFINED ENV{LIBSODIUM_DIR})
-  message(FATAL_ERROR "Please set LIBSODIUM_DIR")
+if (NOT DEFINED ENV{SM_DIR})
+  message(FATAL_ERROR "Please set SM_DIR")
 endif()
-set(LIBSODIUM_DIR $ENV{LIBSODIUM_DIR})
+set(SM_DIR $ENV{SM_DIR})
 
 include($ENV{KEYSTONE_SDK_DIR}/cmake/macros.cmake)
 
@@ -29,56 +26,69 @@ endif()
 
 use_riscv_toolchain(${BITS})
 
+add_definitions(-DuECC_BYTES=32
+  -DuECC_CURVE=uECC_secp256r1
+  -DuECC_SUPPORTS_secp160r1=0
+  -DuECC_SUPPORTS_secp192r1=0
+  -DuECC_SUPPORTS_secp224r1=0
+  -DuECC_SUPPORTS_secp256r1=1
+  -DuECC_SUPPORTS_secp256k1=0
+  -DuECC_ENABLE_VLI_API=1)
+
 # export include directory
-include_directories(include
-  ${LIBSODIUM_CLIENT_DIR}/include
+include_directories(common
+  ${SM_DIR}/src/micro-ecc
   ${KEYSTONE_SDK_DIR}/include
+  ${LIBCOAP_RISCV_DIR}/include
   ${KEYSTONE_SDK_DIR}/include/host
-  ${KEYSTONE_SDK_DIR}/include/edge
-  ${KEYSTONE_SDK_DIR}/include/verifier)
+  ${KEYSTONE_SDK_DIR}/include/edge)
 
 # set paths to the libraries
+set(LIBCOAP ${LIBCOAP_RISCV_DIR}/lib/libcoap-3.a)
 set(KEYSTONE_LIB_HOST ${KEYSTONE_SDK_DIR}/lib/libkeystone-host.a)
 set(KEYSTONE_LIB_EDGE ${KEYSTONE_SDK_DIR}/lib/libkeystone-edge.a)
-set(KEYSTONE_LIB_VERIFIER ${KEYSTONE_SDK_DIR}/lib/libkeystone-verifier.a)
 set(KEYSTONE_LIB_EAPP ${KEYSTONE_SDK_DIR}/lib/libkeystone-eapp.a)
 
 # find program "makeself"
 find_program(MAKESELF makeself)
 
-# trusted client
-add_executable(trusted_client.riscv
-  trusted_client/client.cpp
-  trusted_client/trusted_client.cpp
-  include/enclave_expected_hash.h
-  include/sm_expected_hash.h
-)
-
-target_link_libraries(trusted_client.riscv
-  ${KEYSTONE_LIB_VERIFIER}
-  ${LIBSODIUM_CLIENT_DIR}/.libs/libsodium.a)
-
 # enclave
-add_subdirectory(server_eapp)
-set(host_bin demo-server.riscv)
-set(host_src enclave-host.cpp edge_wrapper.cpp)
+add_subdirectory(filtering_enclave)
+
+set(host_bin filtering-host-app.riscv)
+set(host_src
+  ${SM_DIR}/src/micro-ecc/uECC.c
+  common/aes-128.c
+  common/cbor.c
+  common/ccm-star.c
+  common/cose.c
+  common/oscore.c
+  common/sha-256.c
+  filtering_host_app/AttestationReport.cpp
+  filtering_host_app/CoapServer.cpp
+  filtering_host_app/EnclaveLogger.cpp
+  filtering_host_app/filtering_host_app.cpp
+  filtering_host_app/Ocall.cpp
+  filtering_host_app/OcallDispatcher.cpp
+  filtering_host_app/ProxiedRequest.cpp
+  filtering_host_app/Registration.cpp)
 set(eyrie_plugins "freemem")
-set(package_name "demo-server.ke")
-set(package_script "./demo-server.riscv")
+set(package_name "filtering-host-app.ke")
+set(package_script "./filtering-host-app.riscv")
 
 add_executable(${host_bin} ${host_src})
-target_link_libraries(${host_bin} ${KEYSTONE_LIB_HOST} ${KEYSTONE_LIB_EDGE} ${KEYSTONE_LIB_VERIFIER})
+target_link_libraries(${host_bin} ${LIBCOAP} ${KEYSTONE_LIB_HOST} ${KEYSTONE_LIB_EDGE})
 
 set(eyrie_files_to_copy eyrie-rt)
 add_eyrie_runtime(${eapp_bin}-eyrie
-  "v1.0.0"
+  "master"
   ${eyrie_plugins}
   ${eyrie_files_to_copy})
 
 add_keystone_package(package
   ${package_name}
   ${package_script}
-  ${eyrie_files_to_copy} server_eapp/server_eapp.eapp_riscv ${host_bin})
+  ${eyrie_files_to_copy} filtering_enclave/filtering_enclave.eapp_riscv ${host_bin})
 
 add_dependencies(package ${eapp_bin}-eyrie)
 
