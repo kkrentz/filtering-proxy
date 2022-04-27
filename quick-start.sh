@@ -37,6 +37,8 @@ cmake ..
 make
 make package
 
+riscv64-unknown-elf-size filtering_enclave/filtering_enclave.eapp_riscv
+
 # Done!
 echo -e "************ Demo binaries built and copied into overlay directory. ***************
             Run 'make image' in the Keystone build dir, and the demo binaries should

@@ -20,7 +20,7 @@ include_directories(${KEYSTONE_SDK_DIR}/include/app)
 target_link_libraries(filtering_enclave.eapp_riscv
   ${KEYSTONE_LIB_EAPP})
 
-add_definitions(-DLOG_LEVEL=1)
+add_definitions(-DLOG_LEVEL=0)
 
 set_target_properties(filtering_enclave.eapp_riscv
   PROPERTIES LINK_FLAGS "-nostdlib -static -T ${CMAKE_CURRENT_SOURCE_DIR}/app.lds")
