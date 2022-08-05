@@ -1,0 +1,128 @@
+theory RemoteAttestation
+begin
+
+builtins: hashing, diffie-hellman, signing
+
+rule CreateRootOfTrust:
+  let
+    spkR = pk(~sskR)
+  in
+  [ Fr(~rid)
+  , Fr(~sskR) ]
+--[ OnlyOnce() ]->
+  [ !RootOfTrustsStaticPublicKey(~rid, spkR)
+  , Out(spkR)
+  , !RootOfTrust(~rid, ~sskR)
+  ]
+
+rule CompromiseRootOfTrust:
+  [ !RootOfTrust(~rid, sskR) ] --[ RootOfTrustCompromise(~rid) ]-> [ Out(sskR) ]
+
+rule CreateFilteringClient:
+  let
+    spkC = pk(~sskC)
+  in
+  [ Fr(~cid)
+  , Fr(~sskC)
+  , !RootOfTrustsStaticPublicKey(~rid, spkR)
+  ]
+  -->
+  [ !FilteringClient(~cid, ~rid, ~sskC)
+  , !FilteringClientsStaticPublicKey(~cid, spkC)
+  , Out(spkC)
+  ]
+
+rule CompromiseFilteringClient:
+   [ !FilteringClient(~cid, ~rid, sskC) ] --[ FilteringClientCompromise(~cid) ]-> [ Out(sskC) ]
+
+rule SendRegisterRequest:
+  let
+    epkC = 'g'^~eskC
+	reg = <~cid, ~rid, epkC, sign(<'clientSig', epkC>, ~sskC)>
+  in
+  [	!FilteringClient(~cid, ~rid, ~sskC)
+  , Fr(~eskC)
+  ]
+--[ Initiating(~cid, ~rid) ]->
+  [ ClientContext(~cid, ~eskC)
+  , Out(reg)
+  ]
+
+rule LoadSecurityMonitor:
+  [ Fr(~skS)
+  , !RootOfTrust(~rid, ~sskR)
+  ]
+  -->
+  [ !SecurityMonitor(~skS, sign(pk(~skS), ~sskR), ~rid) ]
+
+rule ProcessRegisterRequest:
+  let
+    epkT = 'g'^~eskT
+	k = h(epkC^~eskT)
+	reg = <cid, rid, epkC, sig>
+	regAck = <epkT, pk(~skS), rotSig, sign(<'smSig', epkT, epkC>, ~skS)>
+  in
+  [ In(reg)
+  , !FilteringClientsStaticPublicKey(cid, spkC)
+  , Fr(~eskT)
+  , !SecurityMonitor(~skS, rotSig, rid)
+  ]
+--[	Eq(verify(sig, <'clientSig', epkC>, spkC), true)
+  , Processing(cid, rid)
+  , UncompromisedFilteringClient(cid)
+  , Responding(k, rid, cid)
+  ]->
+  [ Out(regAck)
+  ]
+
+rule ReceiveRegisterResponse:
+  let
+    k = h(epkT^~eskC)
+	epkC = 'g'^~eskC
+	regAck = <epkT, pkS, rotSig, smSig>
+  in
+  [ ClientContext(~cid, ~eskC)
+  , !FilteringClient(~cid, ~rid, ~sskC)
+  , In(regAck)
+  , !RootOfTrustsStaticPublicKey(~rid, spkR)
+  ]
+--[ Eq(verify(rotSig, pkS, spkR), true)
+  , Eq(verify(smSig, <'smSig', epkT, epkC>, pkS), true)
+  , Commit(k, ~rid, ~cid)
+  , HonestRootOfTrust(~rid)
+  , HonestFilteringClient(~cid)
+  , SessionKey(~rid, ~cid, k)
+  ]->
+  []
+
+restriction Equality:
+  "All x y #i. Eq(x,y) @i ==> x = y"
+
+restriction OnlyOnce:
+  "All #i #j. OnlyOnce()@#i & OnlyOnce()@#j ==> #i = #j"
+
+lemma executable: exists-trace
+  "Ex cid rid k #t1 #t2 #t3.
+    Initiating(cid, rid)@t1
+    & Responding(k, rid, cid)@t2
+	& Commit(k, rid, cid)@t3"
+
+lemma noninjectiveAgreement:
+  "All cid rid #i. Processing(cid, rid)@i
+    ==> (Ex #j. Initiating(cid, rid)@j)
+        | (Ex #r. FilteringClientCompromise(cid)@r & r < i & UncompromisedFilteringClient(cid)@i)"
+
+/* fails */
+lemma injectiveAgreement:
+  "All k rid cid #i.
+    Commit(k, rid, cid)@i
+	==> (Ex #j. Responding(k, rid, cid)@j & j < i & not (Ex #i2. Commit(k, rid, cid)@i2 & not (#i2 = #i)))
+		| (Ex #r. RootOfTrustCompromise(rid)@r & r < i & HonestRootOfTrust(rid)@i)"
+
+lemma perfectForwardSecrecy:
+  "All rid cid k #i #j.
+    SessionKey(rid, cid, k)@i & K(k)@j
+    ==> (Ex #r. FilteringClientCompromise(cid)@r & r < i & HonestFilteringClient(cid)@i)
+		| (Ex #r. RootOfTrustCompromise(rid)@r & r < i & HonestRootOfTrust(rid)@i)"
+
+end
