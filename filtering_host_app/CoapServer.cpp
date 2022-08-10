@@ -321,15 +321,14 @@ CoapServer::handleRegister(coap_resource_t *resource,
     return;
   }
   if (data_length != ((1 + uECC_BYTES) /* compressed ephemeral public key */
-                      + (2 * uECC_BYTES) /* signature */
                       + COAP_SERVER_COOKIE_LEN /* cookie */)) {
-    coap_log(LOG_ERR, "register message has an unexpected length\n");
+    coap_log(LOG_ERR, "register message has an unexpected length %u\n", data_length);
     coap_pdu_set_code(response, COAP_RESPONSE_CODE_BAD_REQUEST);
     return;
   }
 
   /* check cookie */
-  if (!checkCookie(data + uECC_BYTES + 1 + uECC_BYTES * 2,
+  if (!checkCookie(data + uECC_BYTES + 1,
       iot_device_address)) {
     coap_log(LOG_ERR, "checkCookie failed\n");
     coap_pdu_set_code(response, COAP_RESPONSE_CODE_BAD_REQUEST);
@@ -378,9 +377,6 @@ CoapServer::handleRegister(coap_resource_t *resource,
   std::memcpy(register_data->iot_devices_ephemeral_public_key_compressed,
       data,
       sizeof(register_data->iot_devices_ephemeral_public_key_compressed));
-  std::memcpy(register_data->signature,
-      data + uECC_BYTES + 1,
-      sizeof(register_data->signature));
   new_registration->getIotDeviceId(register_data->iot_device_id,
       &register_data->iot_device_id_len);
   register_ocall->setPointer(new_registration.get());

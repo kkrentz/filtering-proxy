@@ -33,11 +33,12 @@
 #include "micro_ecc.inc"
 #include <verifier/report.h>
 
+#define ATTESTATION_REPORT_FHMQV_MIC_LEN (8)
 #define ATTESTATION_REPORT_COMPRESSED_LEN (1 /* compression information */ \
     + uECC_BYTES /* SM's public key */ \
     + SIGNATURE_SIZE /* signature of sm report */ \
     + uECC_BYTES /* enclave's ephemeral public key */ \
-    + SIGNATURE_SIZE /* signature of enclave report */)
+    + ATTESTATION_REPORT_FHMQV_MIC_LEN /* truncated FHMQV MAC */)
 
 namespace filtering {
 

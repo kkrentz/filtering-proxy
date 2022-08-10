@@ -9,11 +9,6 @@ set(KEYSTONE_SDK_DIR $ENV{KEYSTONE_SDK_DIR})
 
 set(LIBCOAP_RISCV_DIR $ENV{LIBCOAP_RISCV_DIR})
 
-if (NOT DEFINED ENV{SM_DIR})
-  message(FATAL_ERROR "Please set SM_DIR")
-endif()
-set(SM_DIR $ENV{SM_DIR})
-
 include($ENV{KEYSTONE_SDK_DIR}/cmake/macros.cmake)
 
 if(RISCV32)
@@ -26,18 +21,10 @@ endif()
 
 use_riscv_toolchain(${BITS})
 
-add_definitions(-DuECC_BYTES=32
-  -DuECC_CURVE=uECC_secp256r1
-  -DuECC_SUPPORTS_secp160r1=0
-  -DuECC_SUPPORTS_secp192r1=0
-  -DuECC_SUPPORTS_secp224r1=0
-  -DuECC_SUPPORTS_secp256r1=1
-  -DuECC_SUPPORTS_secp256k1=0
-  -DuECC_ENABLE_VLI_API=1)
+add_definitions(-DuECC_BYTES=32)
 
 # export include directory
 include_directories(common
-  ${SM_DIR}/src/micro-ecc
   ${KEYSTONE_SDK_DIR}/include
   ${LIBCOAP_RISCV_DIR}/include
   ${KEYSTONE_SDK_DIR}/include/host
@@ -57,7 +44,6 @@ add_subdirectory(filtering_enclave)
 
 set(host_bin filtering-host-app.riscv)
 set(host_src
-  ${SM_DIR}/src/micro-ecc/uECC.c
   common/aes-128.c
   common/cbor.c
   common/ccm-star.c

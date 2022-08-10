@@ -32,9 +32,7 @@
 #include "app/string.h"
 #include "app/syscall.h"
 #include "sha-256.h"
-#include "uECC.h"
 
-#include "crypto.h"
 #include "filtering_ocall_client.h"
 #include "log.h"
 #include "registration.h"
@@ -69,45 +67,57 @@ attestation_service_init(void)
 #endif /* LOG_LEVEL */
 }
 
+static void
+generate_report_and_session_keys(uint8_t result[FILTERING_OCALL_REPORT_LEN],
+    uint8_t session_keys[AES_128_KEY_LENGTH * 2],
+    uint8_t clients_fhmqv_mic[CLIENTS_FHMQV_MIC_LEN],
+    const uint8_t iot_devices_public_key[uECC_BYTES * 2],
+    const uint8_t iot_devices_ephemeral_public_key_compressed[1 + uECC_BYTES])
+{
+  uint8_t concatenated_keys[uECC_BYTES * 2 + 1 + uECC_BYTES];
+
+  memcpy(concatenated_keys, iot_devices_public_key, uECC_BYTES * 2);
+  memcpy(concatenated_keys + uECC_BYTES * 2,
+      iot_devices_ephemeral_public_key_compressed,
+      1 + uECC_BYTES);
+
+  attest_enclave(result, concatenated_keys, sizeof(concatenated_keys));
+  memcpy(session_keys,
+      result + FILTERING_OCALL_REPORT_LEN - uECC_BYTES,
+      uECC_BYTES);
+  memcpy(clients_fhmqv_mic,
+      result + FILTERING_OCALL_REPORT_LEN - uECC_BYTES - SHA_256_DIGEST_LENGTH,
+      CLIENTS_FHMQV_MIC_LEN);
+  memset(result
+          + FILTERING_OCALL_REPORT_LEN
+          - uECC_BYTES
+          - SHA_256_DIGEST_LENGTH,
+      0,
+      SHA_256_DIGEST_LENGTH + uECC_BYTES);
+}
+
 int
 attestation_service_handle_register_message(const register_data_t *register_data,
     uint8_t report[FILTERING_OCALL_REPORT_LEN])
 {
-  uint8_t hash[SHA_256_DIGEST_LENGTH];
-  uint8_t enclaves_ephemeral_public_key[uECC_BYTES * 2];
-  uint8_t enclaves_ephemeral_private_key[uECC_BYTES];
   registration_t *registration;
 
-  /* verify */
-  SHA_256.hash(register_data->iot_devices_ephemeral_public_key_compressed,
-      sizeof(register_data->iot_devices_ephemeral_public_key_compressed),
-      hash);
-  if (!uECC_verify(iot_devices_public_key,
-      hash, SHA_256_DIGEST_LENGTH,
-      register_data->signature,
-      uECC_CURVE())) {
-    LOG_MESSAGE("Register signature invalid\n");
-    goto error_1;
-  }
-
   /* create registration */
-  if (!crypto_generate_key_pair(enclaves_ephemeral_public_key,
-      enclaves_ephemeral_private_key)) {
-    LOG_MESSAGE("crypto_generate_key_pair failed\n");
-    goto error_1;
-  }
   registration = registration_create(register_data->iot_device_id,
       register_data->iot_device_id_len);
   if (!registration) {
     LOG_MESSAGE("registration_create failed\n");
     goto error_1;
   }
-  if (!crypto_generate_session_keys(registration->forwarding.okm,
-      register_data->iot_devices_ephemeral_public_key_compressed,
-      enclaves_ephemeral_private_key)) {
-    LOG_MESSAGE("crypto_generate_session_keys failed\n");
-    goto error_2;
-  }
+
+  /* generate attestation report and OSCORE + OTP keys */
+  generate_report_and_session_keys(report,
+      registration->forwarding.okm,
+      registration->clients_fhmqv_mic,
+      iot_devices_public_key,
+      register_data->iot_devices_ephemeral_public_key_compressed);
+
+  /* init OSCORE session */
   oscore_init_keying_material(&registration->forwarding.keying_material,
       registration->forwarding.oscore,
       NULL, 0,
@@ -119,11 +129,6 @@ attestation_service_handle_register_message(const register_data_t *register_data
     LOG_MESSAGE("oscore_init_context failed\n");
     goto error_2;
   }
-
-  /* send positive response */
-  crypto_generate_report(report,
-      register_data->iot_devices_ephemeral_public_key_compressed,
-      enclaves_ephemeral_public_key);
   return 1;
 error_2:
   registration_delete(registration);
@@ -161,11 +166,13 @@ attestation_service_handle_disclose_message(oscore_data_t *data)
   if (!oscore_is_fresh(&registration->forwarding.context.anti_replay,
       sequence_number)) {
     LOG_MESSAGE("Replayed disclose message\n");
+    /* TODO return cached response */
     return 0;
   }
   if (data->ciphertext_len < (1 /* original code */
       + (sizeof(disclose_uri) - 1)
       + 1 /* Payload Marker */
+      + CLIENTS_FHMQV_MIC_LEN
       + AES_128_KEY_LENGTH /* disclosed master secret */
       + COSE_ALGORITHM_AES_CCM_16_64_128_TAG_LEN /* tag */)) {
     LOG_MESSAGE("Unexpected disclose length\n");
@@ -177,21 +184,35 @@ attestation_service_handle_disclose_message(oscore_data_t *data)
       + data->ciphertext_len
       - COSE_ALGORITHM_AES_CCM_16_64_128_TAG_LEN
       - AES_128_KEY_LENGTH
+      - CLIENTS_FHMQV_MIC_LEN
       - 1 /* Payload Marker */
       - (sizeof(disclose_uri) - 1), disclose_uri, sizeof(disclose_uri) - 1)) {
     LOG_MESSAGE("Unexpected URI path\n");
     return 0;
   }
 
+  /* turn into a completed registration */
   if (!registration->completed) {
-    /* turn into a completed registration */
-    registration_complete(registration,
+    if (memcmp(data->ciphertext
+              + data->ciphertext_len
+              - COSE_ALGORITHM_AES_CCM_16_64_128_TAG_LEN /* tag */
+              - AES_128_KEY_LENGTH
+              - CLIENTS_FHMQV_MIC_LEN,
+          registration->clients_fhmqv_mic,
+          CLIENTS_FHMQV_MIC_LEN)) {
+      LOG_MESSAGE("Client's FHMQV MIC is invalid\n");
+      return 0;
+    }
+    if (!registration_complete(registration,
         data->ciphertext
             + data->ciphertext_len
             - COSE_ALGORITHM_AES_CCM_16_64_128_TAG_LEN /* tag */
             - AES_128_KEY_LENGTH,
         NULL, 0,
-        NULL, 0);
+        NULL, 0)) {
+      LOG_MESSAGE("registration_complete failed\n");
+      return 0;
+    }
   }
 
   /* create authenticated ACK */

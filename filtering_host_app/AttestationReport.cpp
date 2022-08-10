@@ -68,23 +68,21 @@ void
 AttestationReport::compress(
     uint8_t compressed_report[ATTESTATION_REPORT_COMPRESSED_LEN])
 {
-  uECC_compress(report_.sm.public_key,
-      compressed_report,
-      uECC_CURVE());
+  std::memcpy(compressed_report, report_.sm.public_key, uECC_BYTES + 1);
   compressed_report[0] = (compressed_report[0] & 1)
-      | ((report_.enclave.data[1 + uECC_BYTES] & 1) << 1);
+      | ((report_.enclave.data[uECC_BYTES * 2 + 1 + uECC_BYTES] & 1) << 1);
   compressed_report += 1 + uECC_BYTES;
   std::memcpy(compressed_report,
       report_.sm.signature,
       SIGNATURE_SIZE);
   compressed_report += SIGNATURE_SIZE;
   std::memcpy(compressed_report,
-      report_.enclave.data + 1 + uECC_BYTES + 1,
+      report_.enclave.data + uECC_BYTES * 2 + 1 + uECC_BYTES + 1,
       uECC_BYTES);
   compressed_report += uECC_BYTES;
   std::memcpy(compressed_report,
-      report_.enclave.signature,
-      SIGNATURE_SIZE);
+      report_.enclave.fhmqv_mic,
+      ATTESTATION_REPORT_FHMQV_MIC_LEN);
 }
 
 } // namespace filtering

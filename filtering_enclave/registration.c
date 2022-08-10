@@ -147,7 +147,7 @@ registration_delete(registration_t *registration)
     return;
   }
   list_remove(registration_list, registration);
-  if (registration->disclosed_keying_material) {
+  if (registration->completed) {
     free(registration->disclosed_keying_material);
   }
   iot_client_clear(registration);

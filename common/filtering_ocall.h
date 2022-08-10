@@ -98,7 +98,6 @@ typedef struct {
   uint8_t iot_device_id[OSCORE_MAX_ID_LEN];
   uint8_t iot_device_id_len;
   uint8_t iot_devices_ephemeral_public_key_compressed[1 + uECC_BYTES];
-  uint8_t signature[uECC_BYTES * 2];
 } register_data_t;
 
 #endif /* FILTERING_OCALL_H_ */

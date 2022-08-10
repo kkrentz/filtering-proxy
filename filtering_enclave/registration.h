@@ -36,9 +36,10 @@
 #include "cose.h"
 #include "oscore.h"
 #include "list.h"
-#include "uECC.h"
+#include "sha-256.h"
 
 #define REFERENCE_LENGTH (2)
+#define CLIENTS_FHMQV_MIC_LEN (8)
 
 typedef struct registration_t {
   struct registration_t *next;
@@ -65,7 +66,10 @@ typedef struct registration_t {
     };
   } forwarding;
   LIST_STRUCT(iot_client_session_list);
-  oscore_keying_material_t *disclosed_keying_material;
+  union {
+    uint8_t clients_fhmqv_mic[CLIENTS_FHMQV_MIC_LEN];
+    oscore_keying_material_t *disclosed_keying_material;
+  };
 } registration_t;
 
 void registration_init(void);
