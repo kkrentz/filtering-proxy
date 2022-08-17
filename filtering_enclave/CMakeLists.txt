@@ -8,12 +8,12 @@ add_executable(filtering_enclave.eapp_riscv
   oscore_filter.c
   proxied_request.c
   registration.c
-  ../common/aes-128.c
+  aes-128.c
   ../common/cbor.c
   ../common/ccm-star.c
   ../common/cose.c
   ../common/oscore.c
-  ../common/sha-256.c)
+  sha-256.c)
 
 include_directories(${KEYSTONE_SDK_DIR}/include/app)
 
