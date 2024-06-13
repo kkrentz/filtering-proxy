@@ -3,6 +3,7 @@ project(filtering-proxy C CXX ASM)
 
 option(WITH_HEAP "Enable dynamic memory allocation" ON)
 option(WITH_TRAP "Enable the Tiny Remote Attestation Protocol (TRAP)" ON)
+option(WITH_IRAP "Enable the Implicit Remote Attestation Protocol (IRAP)" ON)
 
 # check if SDK has been built and KEYSTONE_SDK_DIR configuration variable exists
 if (NOT DEFINED KEYSTONE_SDK_DIR)
@@ -19,6 +20,16 @@ if(WITH_TRAP)
   add_compile_definitions(WITH_TRAP=1)
 else()
   add_compile_definitions(WITH_TRAP=0)
+endif()
+
+if(WITH_IRAP)
+  if(WITH_TRAP)
+    add_compile_definitions(WITH_IRAP=1)
+  else()
+    message(FATAL_ERROR "WITH_IRAP depends on WITH_TRAP")
+  endif()
+else()
+  add_compile_definitions(WITH_IRAP=0)
 endif()
 
 if(WITH_HEAP)
@@ -49,6 +60,11 @@ set(common_src
   $ENV{KEYSTONE_SM}/src/libcoap/src/oscore-ng/oscore_ng_list.c
   $ENV{KEYSTONE_SM}/src/libcoap/src/oscore-ng/oscore_ng_sha_256.c
   $ENV{KEYSTONE_SM}/src/libcoap/src/oscore-ng/oscore_ng.c)
+if(WITH_IRAP)
+  list(APPEND common_src
+    $ENV{KEYSTONE_SM}/src/libcoap/src/oscore-ng/oscore_ng_rap.c
+    $ENV{KEYSTONE_SM}/src/libcoap/src/oscore-ng/oscore_ng_tiny_dice.c)
+endif()
 include_directories(common
   ${KEYSTONE_SDK_DIR}/include
   $ENV{KEYSTONE_SM}/src/libcoap/include)
@@ -73,6 +89,9 @@ set(eapp_src tee/attestation_service.c
 if(NOT WITH_TRAP)
   list(APPEND eapp_src $ENV{KEYSTONE_SM}/src/libcoap/ext/micro-ecc/uECC.c)
   list(APPEND eapp_src $ENV{KEYSTONE_SM}/src/libcoap/src/oscore-ng/oscore_ng_bakery.c)
+endif()
+if(WITH_IRAP)
+  list(APPEND eapp_src $ENV{KEYSTONE_SM}/src/libcoap/ext/micro-ecc/uECC.c)
 endif()
 if(WITH_HEAP)
   list(APPEND eapp_src tee/tinyalloc/tinyalloc.c)
@@ -116,13 +135,17 @@ target_link_libraries(${eapp_bin}
 target_include_directories(${eapp_bin}
   PUBLIC ${KEYSTONE_SDK_DIR}/include/app
   PUBLIC ${KEYSTONE_SDK_DIR}/include/edge)
+if(WITH_IRAP)
+  target_include_directories(${eapp_bin}
+    PUBLIC $ENV{KEYSTONE_SM}/src/tiny-dice)
+endif()
 target_compile_options(${eapp_bin} PRIVATE -Werror -Wall -Wextra -ffreestanding)
 
 if(WITH_HEAP)
 target_include_directories(${eapp_bin} PUBLIC tee/tinyalloc)
 endif()
 
-if(NOT WITH_TRAP)
+if(NOT WITH_TRAP OR WITH_IRAP)
   target_compile_definitions(${eapp_bin}
     PRIVATE uECC_CURVE=uECC_secp256r1
     PRIVATE uECC_SUPPORTS_secp160r1=0
