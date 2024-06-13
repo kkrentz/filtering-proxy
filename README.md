@@ -91,6 +91,18 @@ make BUILDROOT_TARGET=filtering-libcoap-dirclean \
   && make BUILDROOT_TARGET=opensbi-dirclean
 ```
 
+One can switch between different remote attestation protocols like so:
+
+```bash
+# SIGn-then-MAc (SIGMA)-based remote attestation
+make KEYSTONE_ATTESTATION=sigma
+# Tiny Remote Attestation Protocol (TRAP)
+make KEYSTONE_ATTESTATION=trap
+# Implicit Remote Attestation Protocol (IRAP)
+make KEYSTONE_ATTESTATION=irap
+```
+IRAP is the default.
+
 ## Building libcoap
 
 ```bash
@@ -143,6 +155,8 @@ cd $FILTERING_PROXY_PATH && ./connect.sh
 
 ## Running Filtering Clients in Cooja
 
+Copy the output of `./run.sh` to `$CNG_PATH/os/services/filtering/filtering-client.c`.
+
 Start Cooja:
 
 ```bash
@@ -164,6 +178,8 @@ To check if networking works, ping the border router and the IoT device like so:
 ping6 fd00::ff:fe00:1
 ping6 fd00::ff:fe00:2
 ```
+
+For switching remote attestation protocols, go to `$CNG_PATH/examples/filtering/*/project-conf.h`, and adapt `WITH_TRAP` and `WITH_IRAP` accordingly. For running IRAP with mutual attestation, go to `$CNG_PATH/examples/filtering/*/Makefile` and uncomment `MODULES += os/services/tiny-dice`. This will enable the mock-up of TinyDICE.
 
 ## Running an OSCORE-NG Client
 
