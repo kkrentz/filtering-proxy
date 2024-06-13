@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2022, Uppsala universitet.
+ * Copyright (c) 2025, Siemens AG.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -132,8 +133,14 @@ OcallDispatcher::onOcall(void *buffer) {
       ocallDispatcher.ocall_handler_->onReport(
           (Request *)message->request,
           &message->token,
+#if WITH_IRAP
+          message->payload_length
+          ? (filtering_ocall_oscore_ng_data_t *)message->payload
+          : NULL);
+#else /* WITH_IRAP */
           message->payload,
           message->payload_length);
+#endif /* WITH_IRAP */
       break;
     case FILTERING_OCALL_DISCLOSE_ANSWER:
       ocallDispatcher.ocall_handler_->onDiscloseAnswer(

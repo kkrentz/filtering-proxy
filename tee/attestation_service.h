@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2022, Uppsala universitet.
+ * Copyright (c) 2025, Siemens AG.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -37,8 +38,13 @@
 
 void attestation_service_init(void);
 size_t attestation_service_handle_register_message(
+#if WITH_IRAP
+    filtering_ocall_oscore_ng_data_t *data,
+    const coap_bin_const_t *token);
+#else /* WITH_IRAP */
     const filtering_ocall_register_data_t *register_data,
     uint8_t attestation_report[MAX_ATTESTATION_REPORT_SIZE]);
+#endif /* WITH_IRAP */
 int attestation_service_handle_disclose_message(
     filtering_ocall_oscore_ng_data_t *data,
     const coap_bin_const_t *token);
