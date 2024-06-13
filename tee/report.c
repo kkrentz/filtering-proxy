@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2023, Uppsala universitet.
+ * Copyright (c) 2025, Siemens AG.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,9 +32,39 @@
 
 #include <string.h>
 
+#if WITH_IRAP
+#include "coap3/coap_libcoap_build.h"
+#define SM_VERSION (1)
+#define TEE_VERSION (1)
+#endif /* WITH_IRAP */
+
 size_t
 report_serialize(struct report *report,
                  uint8_t serialized_report[MAX_ATTESTATION_REPORT_SIZE]) {
+#if WITH_IRAP
+  tiny_dice_cert_chain_t cert_chain;
+  {
+    cbor_reader_state_t state;
+    cbor_init_reader(&state,
+                     report->sm.cert_chain,
+                     report->sm.cert_chain_size);
+    if (tiny_dice_decode_cert_chain(&state, &cert_chain) == SIZE_MAX) {
+      return 0;
+    }
+    cert_chain.certs[cert_chain.length - 1].tci_digest = NULL;
+    cert_chain.certs[cert_chain.length - 1].tci_version = SM_VERSION;
+  }
+  {
+    cbor_writer_state_t state;
+    cbor_init_writer(&state, serialized_report, MAX_ATTESTATION_REPORT_SIZE);
+    tiny_dice_write_compressed_public_key(
+        &state,
+        report->enclave.ephemeral_public_key_compressed);
+    tiny_dice_write_cert_chain(&state, &cert_chain);
+    cbor_write_unsigned(&state, TEE_VERSION);
+    return cbor_end_writer(&state);
+  }
+#else /* WITH_IRAP */
   const uint8_t *enclaves_ephemeral_public_key_compressed =
 #if WITH_TRAP
       report->enclave.ephemeral_public_key_compressed;
@@ -64,4 +95,5 @@ report_serialize(struct report *report,
          sizeof(report->enclave.signature));
 #endif /* WITH_TRAP */
   return MAX_ATTESTATION_REPORT_SIZE;
+#endif /* WITH_IRAP */
 }
