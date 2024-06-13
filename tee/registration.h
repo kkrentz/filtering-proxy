@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2022, Uppsala universitet.
+ * Copyright (c) 2025, Siemens AG.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -59,9 +60,9 @@ typedef struct registration_t {
     struct {
       uint8_t attestation_report[MAX_ATTESTATION_REPORT_SIZE];
       size_t attestation_report_size;
-#if WITH_TRAP
+#if WITH_TRAP && !WITH_IRAP
       uint8_t clients_fhmqv_mic[FHMQV_MIC_LEN];
-#endif /* WITH_TRAP */
+#endif /* WITH_TRAP && !WITH_IRAP */
     };
     struct {
       LIST_STRUCT(iot_messages);

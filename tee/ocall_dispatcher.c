@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2022, Uppsala universitet.
+ * Copyright (c) 2025, Siemens AG.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -133,7 +134,9 @@ handle_ocall(struct edge_data *edge_data) {
   } u;
   union {
     filtering_ocall_oscore_ng_data_t *oscore_ng_data;
+#if !WITH_IRAP
     filtering_ocall_register_data_t register_data;
+#endif /* !WITH_IRAP */
 #if !WITH_TRAP
     filtering_ocall_address_t *address;
 #endif /* !WITH_TRAP */
@@ -174,6 +177,19 @@ handle_ocall(struct edge_data *edge_data) {
     reply_ocall_id = FILTERING_OCALL_GOT_REPORT;
     u.message.type = FILTERING_OCALL_REPORT_MESSAGE;
 
+#if WITH_IRAP
+    v.oscore_ng_data = extract_oscore_ng_data(&u.message);
+    if (!v.oscore_ng_data
+        || !attestation_service_handle_register_message(v.oscore_ng_data,
+                                                        &u.message.token)) {
+      LOG_MESSAGE("Register message is invalid\n");
+      u.message.payload_length = 0;
+    } else {
+      LOG_MESSAGE("Received register message\n");
+      u.message.payload_length = sizeof(filtering_ocall_oscore_ng_data_t)
+                                 + v.oscore_ng_data->ciphertext_len;
+    }
+#else /* WITH_IRAP */
     if (u.message.payload_length != sizeof(filtering_ocall_register_data_t)) {
       LOG_MESSAGE("Register message has invalid length\n");
       u.message.payload_length = 0;
@@ -198,6 +214,7 @@ handle_ocall(struct edge_data *edge_data) {
     } else {
       LOG_MESSAGE("Received register message\n");
     }
+#endif /* WITH_IRAP */
     break;
   case FILTERING_OCALL_DISCLOSE_MESSAGE:
     reply_ocall_id = FILTERING_OCALL_DISCLOSE_ANSWER;

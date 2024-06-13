@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2023, Uppsala universitet.
+ * Copyright (c) 2025, Siemens AG.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -45,7 +46,7 @@
 #define MDSIZE (SHA_256_DIGEST_LENGTH)
 #define REPORT_LEN (2048) /* hardcoded in Keystone SM */
 #define ATTEST_DATA_MAXLEN (1024) /* hardcoded in Keystone SM */
-#define FHMQV_MIC_LEN (WITH_TRAP ? 8 : 0)
+#define FHMQV_MIC_LEN (WITH_TRAP && !WITH_IRAP ? 8 : 0)
 #define MAX_ATTESTATION_REPORT_SIZE \
   (1 /* compression information */ \
    + ECC_CURVE_P_256_SIZE /* SM's public key */ \
@@ -63,16 +64,23 @@ struct enclave_report {
 #if WITH_TRAP
   uint8_t ephemeral_public_key_compressed[PUBLIC_KEY_COMPRESSED_SIZE];
   uint8_t fhmqv_key[SHA_256_DIGEST_LENGTH];
+#if !WITH_IRAP
   uint8_t servers_fhmqv_mic[SHA_256_DIGEST_LENGTH];
   uint8_t clients_fhmqv_mic[SHA_256_DIGEST_LENGTH];
+#endif /* !WITH_IRAP */
 #else /* WITH_TRAP */
   uint8_t signature[SIGNATURE_SIZE];
 #endif /* WITH_TRAP */
 };
 struct sm_report {
   uint8_t hash[MDSIZE];
+#if WITH_IRAP
+  uint8_t cert_chain[TINY_DICE_MAX_CERT_CHAIN_SIZE];
+  uint32_t cert_chain_size;
+#else /* WITH_IRAP */
   uint8_t public_key[PUBLIC_KEY_COMPRESSED_SIZE];
   uint8_t signature[SIGNATURE_SIZE];
+#endif /* WITH_IRAP */
 };
 struct report {
   struct enclave_report enclave;

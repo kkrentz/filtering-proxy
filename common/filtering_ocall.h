@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2022, Uppsala universitet.
+ * Copyright (c) 2025, Siemens AG.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -93,6 +94,7 @@ typedef struct filtering_ocall_address_t {
 } filtering_ocall_address_t;
 #endif /* !WITH_TRAP */
 
+#if !WITH_IRAP
 typedef struct filtering_ocall_register_data_t {
   uint8_t ephemeral_public_key_compressed[1 + ECC_CURVE_P_256_SIZE]; /* of the IoT device */
 #if !WITH_TRAP
@@ -101,6 +103,7 @@ typedef struct filtering_ocall_register_data_t {
   filtering_ocall_address_t address;
 #endif /* !WITH_TRAP */
 } filtering_ocall_register_data_t;
+#endif /* !WITH_IRAP */
 
 typedef struct filtering_ocall_oscore_ng_data_t {
   oscore_ng_id_t client_id;

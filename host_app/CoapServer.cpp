@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2022, Uppsala universitet.
+ * Copyright (c) 2025, Siemens AG.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -314,6 +315,45 @@ CoapServer::handleRegister(coap_session_t *session,
     coap_log_err("coap_get_data failed\n");
     return;
   }
+
+#if WITH_IRAP
+  rap_reg_request_t reg_request;
+  if (!rap_parse_reg_request(&reg_request, payload, payload_len)) {
+    coap_log_err("rap_parse_reg_request failed\n");
+    return;
+  }
+
+  /* check cookie */
+  if (reg_request.cookie_size != COAP_BAKERY_COOKIE_SIZE) {
+    coap_log_err("unexpected cookie size\n");
+    return;
+  }
+  if (!coap_bakery_check_cookie(reg_request.cookie,
+                                coap_session_get_addr_remote(session))) {
+    coap_log_err("coap_bakery_check_cookie failed\n");
+    return;
+  }
+
+  /* read OSCORE-NG option */
+  oscore_ng_option_data_t option_data;
+  if (!parseOscoreNgOption(&option_data, request, true)) {
+    coap_log_warn("parseOscoreNgOption failed\n");
+    return;
+  }
+
+  /* create ocall */
+  std::unique_ptr<Ocall> ocall =
+      ocall_factory_.createOcallWithOscoreNgData(
+          std::move(std::make_unique<Ocall>()),
+          request,
+          &option_data,
+          &option_data.kid,
+          &kMiddleboxId,
+          FILTERING_OCALL_REGISTER_MESSAGE);
+
+  /* subsequent code expects payload to point to the ephemeral public key */
+  payload = reg_request.ephemeral_public_key_compressed;
+#else /* WITH_IRAP */
   if (payload_len != (PUBLIC_KEY_COMPRESSED_SIZE /* ephemeral public key */
                       + (WITH_TRAP ? 0 : SIGNATURE_SIZE)
                       + COAP_BAKERY_COOKIE_SIZE)) {
@@ -343,6 +383,7 @@ CoapServer::handleRegister(coap_session_t *session,
           coap_session_get_addr_remote(session)
 #endif /* !WITH_TRAP */
       );
+#endif /* WITH_IRAP */
   if (!ocall) {
     coap_log_err("OcallFactory::createOcallWithRegisterData failed\n");
     return;
@@ -368,8 +409,12 @@ CoapServer::handleRegister(coap_session_t *session,
 void
 CoapServer::onReport(Request *request,
                      coap_bin_const_t *token,
+#if WITH_IRAP
+                     const filtering_ocall_oscore_ng_data_t *data) {
+#else /* WITH_IRAP */
                      uint8_t *report,
                      size_t report_size) {
+#endif /* WITH_IRAP */
   coap_log_debug("onReport\n");
 
   IotRequest *iot_request = (IotRequest *)request;
@@ -377,14 +422,29 @@ CoapServer::onReport(Request *request,
 
   try {
     /* check result */
+#if WITH_IRAP
+    if (!data) {
+      throw __LINE__;
+    }
+#else /* WITH_IRAP */
     if (!report_size) {
       throw __LINE__;
     }
+#endif /* WITH_IRAP */
 
     /* update session */
     registration->setSession(iot_request->getSession());
 
     /* create response */
+#if WITH_IRAP
+    coap_pdu_t *response = pdu_factory_.createPdu(data->pdu_type,
+                                                  COAP_RESPONSE_CODE_CONTENT,
+                                                  iot_request->getMid(),
+                                                  token,
+                                                  &data->option_data,
+                                                  data->ciphertext,
+                                                  data->ciphertext_len);
+#else /* WITH_IRAP */
     coap_pdu_t *response = pdu_factory_.createPdu(
                                iot_request->getType() == COAP_MESSAGE_CON
                                ? COAP_MESSAGE_ACK
@@ -395,6 +455,7 @@ CoapServer::onReport(Request *request,
                                nullptr,
                                report,
                                report_size);
+#endif /* WITH_IRAP */
     if (!response) {
       throw __LINE__;
     }

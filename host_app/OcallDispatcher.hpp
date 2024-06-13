@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2022, Uppsala universitet.
+ * Copyright (c) 2025, Siemens AG.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -60,8 +61,12 @@ class IOcallHandler {
   virtual void onReport(
       Request *request,
       coap_bin_const_t *token,
+#if WITH_IRAP
+      const filtering_ocall_oscore_ng_data_t *data) = 0;
+#else /* WITH_IRAP */
       uint8_t *report,
       size_t report_size) = 0;
+#endif /* WITH_IRAP */
   virtual void onDiscloseAnswer(
       Request *request,
       coap_bin_const_t *token,

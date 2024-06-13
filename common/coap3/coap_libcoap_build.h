@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2023, Uppsala universitet.
+ * Copyright (c) 2025, Siemens AG.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -66,6 +67,17 @@ typedef enum coap_pdu_type_t {
 #include "oscore-ng/oscore_ng_cose.h"
 #include "oscore-ng/oscore_ng_ecc_curve.h"
 #include "oscore-ng/oscore_ng_sha_256.h"
+#if WITH_IRAP
+#ifdef KEYSTONE_ENCLAVE
+typedef struct coap_rap_report_t {
+  coap_bin_const_t cert_chain;
+  uint8_t servers_ephemeral_public_key_compressed[1 + ECC_CURVE_P_256_SIZE];
+  uint8_t tee_tci[SHA_256_DIGEST_LENGTH];
+} coap_rap_report_t;
+#endif /* KEYSTONE_ENCLAVE */
+#include "oscore-ng/oscore_ng_rap.h"
+#include "oscore-ng/oscore_ng_tiny_dice.h"
+#endif /* WITH_IRAP */
 #include "oscore-ng/oscore_ng.h"
 
 #ifdef __cplusplus

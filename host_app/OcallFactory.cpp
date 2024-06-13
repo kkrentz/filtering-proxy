@@ -80,6 +80,7 @@ OcallFactory::createKnockOcall(std::unique_ptr<Ocall> ocall,
 }
 #endif /* !WITH_TRAP */
 
+#if !WITH_IRAP
 std::unique_ptr<Ocall>
 OcallFactory::createOcallWithRegisterData(
     std::unique_ptr<Ocall> ocall,
@@ -117,6 +118,7 @@ OcallFactory::createOcallWithRegisterData(
 
   return ocall;
 }
+#endif /* !WITH_IRAP */
 
 std::unique_ptr<Ocall>
 OcallFactory::createOcallWithOscoreNgData(
