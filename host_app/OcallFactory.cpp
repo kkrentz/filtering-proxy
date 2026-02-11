@@ -59,9 +59,9 @@ OcallFactory::convertAddress(filtering_ocall_address_t *dst,
 }
 
 std::unique_ptr<Ocall>
-OcallFactory::createKnockOcall(std::unique_ptr<Ocall> ocall,
-                               const coap_address_t *address,
+OcallFactory::createKnockOcall(const coap_address_t *address,
                                const coap_pdu_t *pdu) {
+  std::unique_ptr<Ocall> ocall = std::make_unique<Ocall>();
   if (!ocall->init(FILTERING_OCALL_KNOCK_MESSAGE,
                    sizeof(filtering_ocall_address_t))) {
     coap_log_err("Ocall::init failed\n");
@@ -83,7 +83,6 @@ OcallFactory::createKnockOcall(std::unique_ptr<Ocall> ocall,
 #if !WITH_IRAP
 std::unique_ptr<Ocall>
 OcallFactory::createOcallWithRegisterData(
-    std::unique_ptr<Ocall> ocall,
     const coap_pdu_t *pdu,
     const uint8_t ephemeral_public_key_compressed[PUBLIC_KEY_COMPRESSED_SIZE]
 #if !WITH_TRAP
@@ -92,6 +91,7 @@ OcallFactory::createOcallWithRegisterData(
     const coap_address_t *address
 #endif /* !WITH_TRAP */
 ) {
+  std::unique_ptr<Ocall> ocall = std::make_unique<Ocall>();
   if (!ocall->init(FILTERING_OCALL_REGISTER_MESSAGE,
                    sizeof(filtering_ocall_register_data_t))) {
     coap_log_err("Ocall::init failed\n");
@@ -122,7 +122,6 @@ OcallFactory::createOcallWithRegisterData(
 
 std::unique_ptr<Ocall>
 OcallFactory::createOcallWithOscoreNgData(
-    std::unique_ptr<Ocall> ocall,
     const coap_pdu_t *pdu,
     oscore_ng_option_data_t *option_data,
     const oscore_ng_id_t *client_id,
@@ -135,6 +134,8 @@ OcallFactory::createOcallWithOscoreNgData(
     coap_log_err("coap_get_data failed\n");
     return std::unique_ptr<Ocall>(nullptr);
   }
+
+  std::unique_ptr<Ocall> ocall = std::make_unique<Ocall>();
   if (!ocall->init(type,
                    sizeof(filtering_ocall_oscore_ng_data_t) + ciphertext_len)) {
     coap_log_err("Ocall::init failed\n");
