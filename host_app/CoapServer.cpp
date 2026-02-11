@@ -230,7 +230,6 @@ CoapServer::handleKnock(coap_session_t *session,
 
   /* create ocall */
   std::unique_ptr<Ocall> ocall = ocall_factory_.createKnockOcall(
-                                     std::move(std::make_unique<Ocall>()),
                                      coap_session_get_addr_remote(session),
                                      request);
   if (!ocall) {
@@ -344,7 +343,6 @@ CoapServer::handleRegister(coap_session_t *session,
   /* create ocall */
   std::unique_ptr<Ocall> ocall =
       ocall_factory_.createOcallWithOscoreNgData(
-          std::move(std::make_unique<Ocall>()),
           request,
           &option_data,
           &option_data.kid,
@@ -374,7 +372,6 @@ CoapServer::handleRegister(coap_session_t *session,
   /* create ocall */
   std::unique_ptr<Ocall> ocall =
       ocall_factory_.createOcallWithRegisterData(
-          std::move(std::make_unique<Ocall>()),
           request,
           payload
 #if !WITH_TRAP
@@ -552,7 +549,6 @@ CoapServer::handleUnknown(coap_session_t *session,
   /* create ocall */
   std::unique_ptr<Ocall> ocall =
       ocall_factory_.createOcallWithOscoreNgData(
-          std::move(std::make_unique<Ocall>()),
           request,
           &option_data,
           &option_data.kid,
@@ -774,7 +770,6 @@ CoapServer::handleProxyRequest(coap_session_t *session,
   /* create ocall */
   std::unique_ptr<Ocall> ocall =
       ocall_factory_.createOcallWithOscoreNgData(
-          std::move(std::make_unique<Ocall>()),
           request,
           &option_data,
           &option_data.kid,
@@ -901,7 +896,6 @@ CoapServer::onResponse(coap_session_t *session,
   /* create ocall */
   std::unique_ptr<Ocall> ocall =
       ocall_factory_.createOcallWithOscoreNgData(
-          std::move(std::make_unique<Ocall>()),
           received,
           &option_data,
           proxied_request->getIotClientId(),

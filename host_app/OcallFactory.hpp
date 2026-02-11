@@ -44,12 +44,10 @@ class OcallFactory {
   int convertAddress(filtering_ocall_address_t *dst,
                      const coap_address_t *src);
   std::unique_ptr<Ocall> createKnockOcall(
-      std::unique_ptr<Ocall> ocall,
       const coap_address_t *address,
       const coap_pdu_t *pdu);
 #endif /* !WITH_TRAP */
   std::unique_ptr<Ocall> createOcallWithRegisterData(
-      std::unique_ptr<Ocall> ocall,
       const coap_pdu_t *pdu,
       const uint8_t ephemeral_public_key[PUBLIC_KEY_COMPRESSED_SIZE]
 #if !WITH_TRAP
@@ -59,7 +57,6 @@ class OcallFactory {
 #endif /* !WITH_TRAP */
   );
   std::unique_ptr<Ocall> createOcallWithOscoreNgData(
-      std::unique_ptr<Ocall> ocall,
       const coap_pdu_t *pdu,
       oscore_ng_option_data_t *option_data,
       const oscore_ng_id_t *client_id,
