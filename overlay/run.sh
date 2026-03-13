@@ -1,4 +1,4 @@
 #!/bin/bash
 
-insmod /lib/modules/6.1.32/extra/keystone-driver.ko
+insmod /lib/modules/6.11.11/updates/keystone-driver.ko
 ./filtering-proxy.ke
