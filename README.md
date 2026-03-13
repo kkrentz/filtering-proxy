@@ -89,8 +89,7 @@ make BUILDROOT_TARGET=filtering-libcoap-dirclean \
   && make BUILDROOT_TARGET=keystone-sm-dirclean \
   && make BUILDROOT_TARGET=host-keystone-sdk-dirclean \
   && make BUILDROOT_TARGET=keystone-driver-dirclean \
-  && make BUILDROOT_TARGET=keystone-examples-dirclean \
-  && make BUILDROOT_TARGET=opensbi-dirclean
+  && make BUILDROOT_TARGET=keystone-examples-dirclean
 ```
 
 One can switch between different remote attestation protocols like so:
